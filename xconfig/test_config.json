@@ -1,0 +1,16 @@
+{
+  "string_value": "test string",
+  "bool_value": true,
+  "int_value": 42,
+  "float_value": 3.14,
+  "string_slice": ["item1", "item2", "item3"],
+  "int_slice": [1, 2, 3, 4, 5],
+  "nested": {
+    "key": "nested value",
+    "number": 100
+  },
+  "nested_array": [
+    {"id": 1, "name": "item1"},
+    {"id": 2, "name": "item2"}
+  ]
+} 
