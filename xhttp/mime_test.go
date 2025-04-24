@@ -1,4 +1,4 @@
-package xutils
+package xhttp
 
 import "testing"
 
