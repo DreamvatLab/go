@@ -1,10 +1,10 @@
 package xerr
 
-import "github.com/Lukiya/go/xlog"
+import "github.com/DreamvatLab/go/xlog"
 
-// HasError checks if an error exists and logs it if present.
+// LogError checks if an error exists and logs it if present.
 // Returns true if the error exists, false otherwise.
-func HasError(err error) bool {
+func LogError(err error) bool {
 	if err != nil {
 		xlog.Error(err)
 		return true

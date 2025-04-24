@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/Lukiya/go/xjson"
+	"github.com/DreamvatLab/go/xjson"
 )
 
 type JsonConfigProvider struct {

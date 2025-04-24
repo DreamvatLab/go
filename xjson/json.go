@@ -3,8 +3,8 @@ package xjson
 import (
 	"encoding/json"
 
-	"github.com/Lukiya/go/xbytes"
-	"github.com/Lukiya/go/xerr"
+	"github.com/DreamvatLab/go/xbytes"
+	"github.com/DreamvatLab/go/xerr"
 	"github.com/tidwall/gjson"
 )
 

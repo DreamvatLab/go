@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Lukiya/go/xconv"
+	"github.com/DreamvatLab/go/xconv"
 )
 
 // MapConfiguration represents a configuration stored in a map structure
