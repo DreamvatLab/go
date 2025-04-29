@@ -57,6 +57,17 @@ func TestParseRedisConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "single node with password only",
+			connStr: "redis://:password@localhost:6379",
+			want: &RedisConfig{
+				Addrs:    []string{"localhost:6379"},
+				Username: "",
+				Password: "password",
+				DB:       0,
+			},
+			wantErr: false,
+		},
+		{
 			name:    "cluster mode without auth",
 			connStr: "redis://localhost:6379,localhost:6380",
 			want: &RedisConfig{
