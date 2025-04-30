@@ -21,7 +21,7 @@ func TestParallelRun(t *testing.T) {
 			return true, nil
 		}
 
-		results := ParallelRun(func1, func2, func3)
+		results := ParallelRun(3, func1, func2, func3)
 
 		assert.Equal(t, 3, len(results))
 		assert.Equal(t, "result1", results[0].Result)
@@ -34,7 +34,7 @@ func TestParallelRun(t *testing.T) {
 
 	// Test case 2: Empty function list
 	t.Run("Empty function list", func(t *testing.T) {
-		results := ParallelRun()
+		results := ParallelRun(0)
 		assert.Equal(t, 0, len(results))
 	})
 
@@ -47,7 +47,7 @@ func TestParallelRun(t *testing.T) {
 			return nil, errors.New("error2")
 		}
 
-		results := ParallelRun(func1, func2)
+		results := ParallelRun(2, func1, func2)
 
 		assert.Equal(t, 2, len(results))
 		assert.Nil(t, results[0].Result)
@@ -68,7 +68,7 @@ func TestParallelRun(t *testing.T) {
 			return 42, nil
 		}
 
-		results := ParallelRun(func1, func2, func3)
+		results := ParallelRun(3, func1, func2, func3)
 
 		assert.Equal(t, 3, len(results))
 		assert.Equal(t, "result1", results[0].Result)
@@ -95,7 +95,7 @@ func TestParallelRun(t *testing.T) {
 		}
 
 		startTime := time.Now()
-		results := ParallelRun(func1, func2, func3)
+		results := ParallelRun(3, func1, func2, func3)
 		elapsedTime := time.Since(startTime)
 
 		// The total execution time should be close to the longest function execution time

@@ -2,69 +2,63 @@ package xtask
 
 import (
 	"fmt"
+	"runtime"
 	"runtime/debug"
-
-	"github.com/DreamvatLab/go/xdto"
+	"sync"
 )
 
-// ParallelRun executes multiple functions in parallel and collects their results
-// Parameters:
-//   - actions: multiple functions, each returning a result and a possible error
-//
-// Returns:
-//   - a slice of ChannelResult containing all function execution results
-func ParallelRun(actions ...func() (interface{}, error)) []*xdto.ChannelResult {
-	actionCount := len(actions)
-
-	// If no functions are provided, return an empty slice
-	if actionCount == 0 {
-		return []*xdto.ChannelResult{}
+// ParallelRun executes multiple tasks concurrently with a specified concurrency limit.
+// It returns a slice of TaskResult containing the results and errors from each task.
+// If limit is less than or equal to 0, it uses the number of available CPU cores as the limit.
+func ParallelRun(limit int, tasks ...func() (interface{}, error)) []*TaskResult {
+	// Set default concurrency limit to number of CPU cores if not specified
+	if limit <= 0 {
+		limit = runtime.GOMAXPROCS(0)
 	}
 
-	// Create a slice of channels to collect results from all functions
-	channels := make([]chan *xdto.ChannelResult, actionCount)
+	// Initialize result slice and synchronization primitives
+	actionCount := len(tasks)
+	results := make([]*TaskResult, actionCount)
+	var wg sync.WaitGroup
+	taskIndice := make(chan int) // Channel for distributing task indices to workers
 
-	// Create a channel for each function
-	for i := range actions {
-		channels[i] = make(chan *xdto.ChannelResult, 1)
-	}
+	// Start worker goroutines
+	for w := 0; w < limit; w++ {
+		go func() {
+			// Each worker processes tasks from the channel until it's closed
+			for i := range taskIndice {
+				func(index int) {
+					// Ensure task completion is signaled and handle panics
+					defer wg.Done()
+					defer func() {
+						if r := recover(); r != nil {
+							// Store panic information in the result
+							results[index] = &TaskResult{
+								Result: nil,
+								Error:  fmt.Errorf("panic recovered: %v\n%s", r, debug.Stack()),
+							}
+						}
+					}()
 
-	// Start all functions
-	for i, action := range actions {
-		go func(index int, act func() (interface{}, error)) {
-			// Use defer to ensure the channel is always closed
-			defer close(channels[index])
-
-			// Recover from any panic
-			defer func() {
-				if r := recover(); r != nil {
-					// Create an error with the panic information
-					err := fmt.Errorf("panic recovered: %v\n%s", r, debug.Stack())
-
-					// Send the error to the channel
-					channels[index] <- &xdto.ChannelResult{
-						Result: nil,
+					// Execute the task and store its result
+					result, err := tasks[index]()
+					results[index] = &TaskResult{
+						Result: result,
 						Error:  err,
 					}
-				}
-			}()
-
-			// Execute the function and get the result
-			result, err := act()
-
-			// Send the result to the channel
-			channels[index] <- &xdto.ChannelResult{
-				Result: result,
-				Error:  err,
+				}(i)
 			}
-		}(i, action)
+		}()
 	}
 
-	// Collect all results
-	results := make([]*xdto.ChannelResult, actionCount)
-	for i, ch := range channels {
-		results[i] = <-ch
+	// Distribute tasks to workers
+	for i := 0; i < actionCount; i++ {
+		wg.Add(1)       // Increment wait group counter before sending task
+		taskIndice <- i // Send task index to worker
 	}
+	close(taskIndice) // Signal that no more tasks will be sent
 
+	// Wait for all tasks to complete
+	wg.Wait()
 	return results
 }
