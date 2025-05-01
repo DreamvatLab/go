@@ -2,6 +2,7 @@ package xtask
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -82,7 +83,7 @@ func ParallelRunSlice[T any](limit int, slice []T, processor func(T) (interface{
 //   - limit: Maximum number of concurrent workers per batch. If <= 0, uses runtime.GOMAXPROCS(0)
 //   - slice: Input slice of type T to be processed
 //   - processor: Function to process each element of the slice
-//   - onBatchDone: Callback after each batch, receives batch results and batch index, returns whether to stop
+//   - onBatchDone: Callback after each batch, receives batch results, batch index and total batches, returns whether to stop
 //
 // Returns:
 //   - []*TaskResult: Slice of results in the same order as input slice (up to where stopped)
@@ -90,7 +91,7 @@ func ParallelRunSliceWithBatchCallback[T any](
 	limit int,
 	slice []T,
 	processor func(T) (interface{}, error),
-	onBatchDone func(results []*TaskResult, batchIndex int) bool,
+	onBatchDone func(results []*TaskResult, batchIndex int, totalBatches int) bool,
 ) []*TaskResult {
 	if limit <= 0 {
 		limit = runtime.GOMAXPROCS(0)
@@ -99,6 +100,7 @@ func ParallelRunSliceWithBatchCallback[T any](
 	taskCount := len(slice)
 	allResults := make([]*TaskResult, taskCount)
 	batchIndex := 0
+	totalBatches := int(math.Ceil(float64(taskCount) / float64(limit)))
 
 	for offset := 0; offset < taskCount; offset += limit {
 		end := offset + limit
@@ -139,7 +141,7 @@ func ParallelRunSliceWithBatchCallback[T any](
 		}
 
 		// Call callback
-		if onBatchDone != nil && onBatchDone(results, batchIndex) {
+		if onBatchDone != nil && onBatchDone(results, batchIndex, totalBatches) {
 			break
 		}
 		batchIndex++

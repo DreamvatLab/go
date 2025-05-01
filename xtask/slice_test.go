@@ -130,12 +130,13 @@ func TestParallelRunSlice(t *testing.T) {
 
 func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 	tests := []struct {
-		name        string
-		limit       int
-		input       []int
-		processor   func(int) (interface{}, error)
-		onBatchDone func([]*TaskResult, int) bool
-		want        []*TaskResult
+		name          string
+		limit         int
+		input         []int
+		processor     func(int) (interface{}, error)
+		onBatchDone   func([]*TaskResult, int, int) bool
+		want          []*TaskResult
+		expectBatches int
 	}{
 		{
 			name:  "empty slice",
@@ -144,10 +145,14 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 0 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 0)
+				}
 				return false
 			},
-			want: []*TaskResult{},
+			want:          []*TaskResult{},
+			expectBatches: 0,
 		},
 		{
 			name:  "single batch",
@@ -156,7 +161,10 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 1 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 1)
+				}
 				return false
 			},
 			want: []*TaskResult{
@@ -164,6 +172,7 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				{Result: 4, Error: nil},
 				{Result: 6, Error: nil},
 			},
+			expectBatches: 1,
 		},
 		{
 			name:  "multiple batches",
@@ -172,7 +181,10 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 2 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 2)
+				}
 				return false
 			},
 			want: []*TaskResult{
@@ -181,6 +193,7 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				{Result: 6, Error: nil},
 				{Result: 8, Error: nil},
 			},
+			expectBatches: 2,
 		},
 		{
 			name:  "early stop",
@@ -189,7 +202,10 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 2 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 2)
+				}
 				return batchIndex == 1 // Stop after second batch
 			},
 			want: []*TaskResult{
@@ -198,6 +214,7 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				{Result: 6, Error: nil},
 				{Result: 8, Error: nil},
 			},
+			expectBatches: 2,
 		},
 		{
 			name:  "with error",
@@ -209,7 +226,10 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				}
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 2 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 2)
+				}
 				return false
 			},
 			want: []*TaskResult{
@@ -217,6 +237,7 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				{Result: nil, Error: errors.New("test error")},
 				{Result: 6, Error: nil},
 			},
+			expectBatches: 2,
 		},
 		{
 			name:  "with panic",
@@ -228,7 +249,10 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				}
 				return n * 2, nil
 			},
-			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 2 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 2)
+				}
 				return false
 			},
 			want: []*TaskResult{
@@ -236,6 +260,29 @@ func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 				{Result: nil, Error: nil}, // Will be checked separately for panic
 				{Result: 6, Error: nil},
 			},
+			expectBatches: 2,
+		},
+		{
+			name:  "uneven batches",
+			limit: 2,
+			input: []int{1, 2, 3, 4, 5},
+			processor: func(n int) (interface{}, error) {
+				return n * 2, nil
+			},
+			onBatchDone: func(results []*TaskResult, batchIndex int, totalBatches int) bool {
+				if totalBatches != 3 {
+					t.Errorf("totalBatches = %v, want %v", totalBatches, 3)
+				}
+				return false
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+				{Result: 6, Error: nil},
+				{Result: 8, Error: nil},
+				{Result: 10, Error: nil},
+			},
+			expectBatches: 3,
 		},
 	}
 
