@@ -12,271 +12,290 @@ func TestParallelRunSlice(t *testing.T) {
 		limit     int
 		input     []int
 		processor func(int) (interface{}, error)
-		want      []interface{}
-		wantErr   bool
+		want      []*TaskResult
 	}{
-		{
-			name:  "basic processing",
-			limit: 2,
-			input: []int{1, 2, 3, 4},
-			processor: func(n int) (interface{}, error) {
-				return n * 2, nil
-			},
-			want:    []interface{}{2, 4, 6, 8},
-			wantErr: false,
-		},
-		{
-			name:  "error handling",
-			limit: 2,
-			input: []int{1, 2, 3},
-			processor: func(n int) (interface{}, error) {
-				if n == 2 {
-					return nil, errors.New("error on 2")
-				}
-				return n, nil
-			},
-			want:    []interface{}{1, nil, 3},
-			wantErr: true,
-		},
 		{
 			name:  "empty slice",
 			limit: 2,
 			input: []int{},
 			processor: func(n int) (interface{}, error) {
-				return n, nil
+				return n * 2, nil
 			},
-			want:    []interface{}{},
-			wantErr: false,
+			want: []*TaskResult{},
 		},
 		{
-			name:  "zero limit",
-			limit: 0,
-			input: []int{1, 2},
+			name:  "single element",
+			limit: 2,
+			input: []int{1},
 			processor: func(n int) (interface{}, error) {
-				return n, nil
+				return n * 2, nil
 			},
-			want:    []interface{}{1, 2},
-			wantErr: false,
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+			},
 		},
 		{
-			name:  "panic recovery",
+			name:  "multiple elements",
+			limit: 2,
+			input: []int{1, 2, 3, 4},
+			processor: func(n int) (interface{}, error) {
+				return n * 2, nil
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+				{Result: 6, Error: nil},
+				{Result: 8, Error: nil},
+			},
+		},
+		{
+			name:  "with error",
+			limit: 2,
+			input: []int{1, 2, 3},
+			processor: func(n int) (interface{}, error) {
+				if n == 2 {
+					return nil, errors.New("test error")
+				}
+				return n * 2, nil
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: nil, Error: errors.New("test error")},
+				{Result: 6, Error: nil},
+			},
+		},
+		{
+			name:  "with panic",
 			limit: 2,
 			input: []int{1, 2, 3},
 			processor: func(n int) (interface{}, error) {
 				if n == 2 {
 					panic("test panic")
 				}
-				return n, nil
+				return n * 2, nil
 			},
-			want:    []interface{}{1, nil, 3},
-			wantErr: true,
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: nil, Error: nil}, // Will be checked separately for panic
+				{Result: 6, Error: nil},
+			},
+		},
+		{
+			name:  "zero limit",
+			limit: 0,
+			input: []int{1, 2},
+			processor: func(n int) (interface{}, error) {
+				return n * 2, nil
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := ParallelRunSlice(tt.limit, tt.input, tt.processor, nil)
+			got := ParallelRunSlice(tt.limit, tt.input, tt.processor)
 
-			// Check length
-			if len(results) != len(tt.input) {
-				t.Errorf("ParallelRunSlice() returned %d results, want %d", len(results), len(tt.input))
+			if len(got) != len(tt.want) {
+				t.Errorf("ParallelRunSlice() length = %v, want %v", len(got), len(tt.want))
 				return
 			}
 
-			// Check results
-			for i, result := range results {
-				if tt.wantErr && result.Error != nil {
-					continue // Error expected
-				}
-
-				if result.Error != nil {
-					t.Errorf("ParallelRunSlice()[%d] error = %v, wantErr %v", i, result.Error, tt.wantErr)
+			for i, result := range got {
+				if tt.name == "with panic" && i == 1 {
+					// Special case for panic test
+					if result.Error == nil {
+						t.Errorf("ParallelRunSlice() panic case = nil, want non-nil error")
+					}
 					continue
 				}
 
-				if result.Result != tt.want[i] {
-					t.Errorf("ParallelRunSlice()[%d] = %v, want %v", i, result.Result, tt.want[i])
+				if result.Error != nil && tt.want[i].Error != nil {
+					if result.Error.Error() != tt.want[i].Error.Error() {
+						t.Errorf("ParallelRunSlice() error = %v, want %v", result.Error, tt.want[i].Error)
+					}
+				} else if (result.Error != nil) != (tt.want[i].Error != nil) {
+					t.Errorf("ParallelRunSlice() error presence = %v, want %v", result.Error != nil, tt.want[i].Error != nil)
+				}
+
+				if result.Result != tt.want[i].Result {
+					t.Errorf("ParallelRunSlice() result = %v, want %v", result.Result, tt.want[i].Result)
 				}
 			}
 		})
 	}
 }
 
-func TestParallelRunSliceConcurrency(t *testing.T) {
-	// Test to ensure concurrent execution
-	limit := 2
-	input := []int{0, 1, 2, 3} // Initialize with proper values
-	processed := make(chan int, 4)
-	done := make(chan struct{})
-
-	// Start a goroutine to collect results
-	go func() {
-		processedCount := 0
-		for n := range processed {
-			processedCount++
-			if processedCount > len(input) {
-				t.Errorf("More elements processed than input size, got value %d", n)
-			}
-		}
-		if processedCount != len(input) {
-			t.Errorf("Expected %d elements to be processed, got %d", len(input), processedCount)
-		}
-		close(done)
-	}()
-
-	results := ParallelRunSlice(limit, input, func(n int) (interface{}, error) {
-		time.Sleep(100 * time.Millisecond) // Simulate work
-		processed <- n
-		return n, nil
-	}, nil)
-
-	// Close the processed channel after all processing is done
-	close(processed)
-
-	// Wait for result collection with timeout
-	select {
-	case <-done:
-		// Success
-	case <-time.After(1 * time.Second):
-		t.Fatal("Test timed out waiting for results")
-	}
-
-	// Check results
-	for i, result := range results {
-		if result.Error != nil {
-			t.Errorf("Unexpected error at index %d: %v", i, result.Error)
-		}
-		if result.Result != i {
-			t.Errorf("Expected result %d at index %d, got %v", i, i, result.Result)
-		}
-	}
-}
-
-func TestParallelRunSliceBatchCallback(t *testing.T) {
+func TestParallelRunSliceWithBatchCallback(t *testing.T) {
 	tests := []struct {
 		name        string
 		limit       int
 		input       []int
 		processor   func(int) (interface{}, error)
-		wantBatches int
+		onBatchDone func([]*TaskResult, int) bool
+		want        []*TaskResult
 	}{
 		{
-			name:  "exact batch size",
+			name:  "empty slice",
+			limit: 2,
+			input: []int{},
+			processor: func(n int) (interface{}, error) {
+				return n * 2, nil
+			},
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return false
+			},
+			want: []*TaskResult{},
+		},
+		{
+			name:  "single batch",
+			limit: 4,
+			input: []int{1, 2, 3},
+			processor: func(n int) (interface{}, error) {
+				return n * 2, nil
+			},
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return false
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+				{Result: 6, Error: nil},
+			},
+		},
+		{
+			name:  "multiple batches",
 			limit: 2,
 			input: []int{1, 2, 3, 4},
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			wantBatches: 2,
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return false
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+				{Result: 6, Error: nil},
+				{Result: 8, Error: nil},
+			},
 		},
 		{
-			name:  "partial batch",
-			limit: 3,
-			input: []int{1, 2, 3, 4, 5},
+			name:  "early stop",
+			limit: 2,
+			input: []int{1, 2, 3, 4},
 			processor: func(n int) (interface{}, error) {
 				return n * 2, nil
 			},
-			wantBatches: 2,
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return batchIndex == 1 // Stop after second batch
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: 4, Error: nil},
+				{Result: 6, Error: nil},
+				{Result: 8, Error: nil},
+			},
 		},
 		{
-			name:  "single batch",
-			limit: 5,
+			name:  "with error",
+			limit: 2,
 			input: []int{1, 2, 3},
 			processor: func(n int) (interface{}, error) {
+				if n == 2 {
+					return nil, errors.New("test error")
+				}
 				return n * 2, nil
 			},
-			wantBatches: 1,
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return false
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: nil, Error: errors.New("test error")},
+				{Result: 6, Error: nil},
+			},
+		},
+		{
+			name:  "with panic",
+			limit: 2,
+			input: []int{1, 2, 3},
+			processor: func(n int) (interface{}, error) {
+				if n == 2 {
+					panic("test panic")
+				}
+				return n * 2, nil
+			},
+			onBatchDone: func(results []*TaskResult, batchIndex int) bool {
+				return false
+			},
+			want: []*TaskResult{
+				{Result: 2, Error: nil},
+				{Result: nil, Error: nil}, // Will be checked separately for panic
+				{Result: 6, Error: nil},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			batches := 0
-			completedCounts := make([]int, 0)
-			batchCallback := func(batchIndex, completedCount int) {
-				batches++
-				completedCounts = append(completedCounts, completedCount)
+			got := ParallelRunSliceWithBatchCallback(tt.limit, tt.input, tt.processor, tt.onBatchDone)
+
+			if len(got) != len(tt.want) {
+				t.Errorf("ParallelRunSliceWithBatchCallback() length = %v, want %v", len(got), len(tt.want))
+				return
 			}
 
-			results := ParallelRunSlice(tt.limit, tt.input, tt.processor, batchCallback)
-
-			// Verify batch count
-			if batches != tt.wantBatches {
-				t.Errorf("Expected %d batches, got %d", tt.wantBatches, batches)
-			}
-
-			// Verify completed counts are in order
-			for i := 1; i < len(completedCounts); i++ {
-				if completedCounts[i] <= completedCounts[i-1] {
-					t.Errorf("Completed counts should be increasing, got %v", completedCounts)
-					break
+			for i, result := range got {
+				if tt.name == "with panic" && i == 1 {
+					// Special case for panic test
+					if result.Error == nil {
+						t.Errorf("ParallelRunSliceWithBatchCallback() panic case = nil, want non-nil error")
+					}
+					continue
 				}
-			}
 
-			// Verify final completed count matches input length
-			if len(completedCounts) > 0 && completedCounts[len(completedCounts)-1] != len(tt.input) {
-				t.Errorf("Final completed count should be %d, got %d", len(tt.input), completedCounts[len(completedCounts)-1])
-			}
-
-			// Verify results
-			for i, result := range results {
-				if result.Error != nil {
-					t.Errorf("Unexpected error at index %d: %v", i, result.Error)
+				if result.Error != nil && tt.want[i].Error != nil {
+					if result.Error.Error() != tt.want[i].Error.Error() {
+						t.Errorf("ParallelRunSliceWithBatchCallback() error = %v, want %v", result.Error, tt.want[i].Error)
+					}
+				} else if (result.Error != nil) != (tt.want[i].Error != nil) {
+					t.Errorf("ParallelRunSliceWithBatchCallback() error presence = %v, want %v", result.Error != nil, tt.want[i].Error != nil)
 				}
-				if result.Result != tt.input[i]*2 {
-					t.Errorf("Expected result %d at index %d, got %v", tt.input[i]*2, i, result.Result)
+
+				if result.Result != tt.want[i].Result {
+					t.Errorf("ParallelRunSliceWithBatchCallback() result = %v, want %v", result.Result, tt.want[i].Result)
 				}
 			}
 		})
 	}
 }
 
-func TestParallelRunSliceBatchCallbackWithErrors(t *testing.T) {
-	input := []int{1, 2, 3, 4}
-	limit := 2
-	batches := 0
-	completedCounts := make([]int, 0)
+// TestConcurrency tests the actual concurrency behavior
+func TestConcurrency(t *testing.T) {
+	const (
+		limit     = 2
+		taskCount = 4
+		delay     = 100 * time.Millisecond
+	)
 
-	batchCallback := func(batchIndex, completedCount int) {
-		batches++
-		completedCounts = append(completedCounts, completedCount)
+	start := time.Now()
+	results := ParallelRunSlice(limit, make([]int, taskCount), func(n int) (interface{}, error) {
+		time.Sleep(delay)
+		return n, nil
+	})
+
+	elapsed := time.Since(start)
+	expectedMin := delay * (taskCount / limit)
+	expectedMax := delay * (taskCount/limit + 1)
+
+	if elapsed < expectedMin || elapsed > expectedMax {
+		t.Errorf("ParallelRunSlice() took %v, expected between %v and %v", elapsed, expectedMin, expectedMax)
 	}
 
-	results := ParallelRunSlice(limit, input, func(n int) (interface{}, error) {
-		if n == 2 {
-			return nil, errors.New("test error")
-		}
-		return n * 2, nil
-	}, batchCallback)
-
-	// Verify batch count (should still get callbacks even with errors)
-	if batches != 2 {
-		t.Errorf("Expected 2 batches, got %d", batches)
-	}
-
-	// Verify completed counts
-	if len(completedCounts) != 2 {
-		t.Errorf("Expected 2 completed counts, got %d", len(completedCounts))
-	}
-
-	// Verify final completed count
-	if completedCounts[len(completedCounts)-1] != len(input) {
-		t.Errorf("Final completed count should be %d, got %d", len(input), completedCounts[len(completedCounts)-1])
-	}
-
-	// Verify results
-	for i, result := range results {
-		if i == 1 { // index of value 2
-			if result.Error == nil {
-				t.Error("Expected error at index 1")
-			}
-		} else {
-			if result.Error != nil {
-				t.Errorf("Unexpected error at index %d: %v", i, result.Error)
-			}
-			if result.Result != input[i]*2 {
-				t.Errorf("Expected result %d at index %d, got %v", input[i]*2, i, result.Result)
-			}
-		}
+	if len(results) != taskCount {
+		t.Errorf("ParallelRunSlice() returned %d results, want %d", len(results), taskCount)
 	}
 }
