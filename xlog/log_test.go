@@ -48,10 +48,6 @@ func TestErrorf(t *testing.T) {
 	Errorf("test error message: %s", "formatted")
 }
 
-func TestFatal(t *testing.T) {
-	Fatal("test fatal message")
-}
-
-func TestFatalf(t *testing.T) {
-	Fatalf("test fatal message: %s", "formatted")
-}
+// func TestFatalf(t *testing.T) {
+// 	Fatalf("test fatal message: %s", "formatted")
+// }

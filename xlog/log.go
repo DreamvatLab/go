@@ -1,16 +1,12 @@
 package xlog
 
-import (
-	"io"
-)
-
 // Global logger instance
 var (
 	_logger ILogger = newZapLogger(&LogConfig{})
 )
 
-func Init(logConfig *LogConfig, ioWriters ...io.Writer) {
-	_logger = newZapLogger(logConfig, ioWriters...)
+func Init(logConfig *LogConfig, sinks ...LogSink) {
+	_logger = newZapLogger(logConfig, sinks...)
 }
 
 // ILogger defines the interface for logging operations
@@ -62,6 +58,10 @@ type FileLogConfig struct {
 	MaxAge int
 	// Compress determines if rotated log files should be compressed
 	Compress bool
+}
+
+type LogSink interface {
+	WriteLog(level string, v ...interface{})
 }
 
 // WriteLog writes a debug level log message

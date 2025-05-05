@@ -1,7 +1,6 @@
 package xlog
 
 import (
-	"io"
 	"os"
 	"time"
 
@@ -11,35 +10,29 @@ import (
 )
 
 // newZapLogger creates a new ZapLogger instance with the provided configuration
-func newZapLogger(config *LogConfig, additionalWriters ...io.Writer) ILogger {
+
+func newZapLogger(config *LogConfig, sinks ...LogSink) ILogger {
 	if config.TraceLevel == "" {
 		config.TraceLevel = "error"
 	}
 
-	// Configure JSON encoder for structured logging
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339)
 	encoder := zapcore.NewJSONEncoder(encoderCfg)
 
-	// Create console output for standard output
 	consoleWriter := zapcore.AddSync(os.Stdout)
-
 	writers := []zapcore.WriteSyncer{consoleWriter}
 
-	// File writer
 	if config.File != nil && config.File.Filename != "" {
-		// Set default file logging configuration
 		if config.File.MaxSize == 0 {
-			config.File.MaxSize = 10 // Max log file size: 10MB
+			config.File.MaxSize = 10
 		}
 		if config.File.MaxBackups == 0 {
-			config.File.MaxBackups = 5 // Max log file backups: 5
+			config.File.MaxBackups = 5
 		}
 		if config.File.MaxAge == 0 {
-			config.File.MaxAge = 7 // Max log file age: 7 days
+			config.File.MaxAge = 7
 		}
-
-		// Create file logging output with rotation support
 		fileWriter := zapcore.AddSync(&lumberjack.Logger{
 			Filename:   config.File.Filename,
 			MaxSize:    config.File.MaxSize,
@@ -47,40 +40,32 @@ func newZapLogger(config *LogConfig, additionalWriters ...io.Writer) ILogger {
 			MaxAge:     config.File.MaxAge,
 			Compress:   config.File.Compress,
 		})
-
 		writers = append(writers, fileWriter)
 	}
 
-	// Add additional io.Writer to the writers
-	for _, additionalWriter := range additionalWriters {
-		writers = append(writers, zapcore.AddSync(additionalWriter))
-	}
-
-	// Combine multiple writers if needed
-	var writer zapcore.WriteSyncer
-	if len(writers) > 1 {
-		writer = zapcore.NewMultiWriteSyncer(writers...)
-	} else {
-		writer = writers[0]
-	}
-
-	// Parse and set the main logging level
 	logLevel, err := zapcore.ParseLevel(config.Level)
 	if err != nil {
 		panic(err)
 	}
-
-	// Create the core logger with the configured encoder, writer, and level
-	core := zapcore.NewCore(encoder, writer, logLevel)
-
-	// Parse and set the trace level for stack traces
 	traceLevel, err := zapcore.ParseLevel(config.TraceLevel)
 	if err != nil {
 		traceLevel = zapcore.ErrorLevel
 	}
 
-	// Create the final logger with stack trace support
-	zapLogger := zap.New(core, zap.AddStacktrace(traceLevel))
+	baseCore := zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(writers...), logLevel)
+
+	var cores []zapcore.Core
+	cores = append(cores, baseCore)
+
+	for _, sink := range sinks {
+		cores = append(cores, &sinkCore{
+			sink:     sink,
+			minLevel: logLevel,
+		})
+	}
+
+	tee := zapcore.NewTee(cores...)
+	zapLogger := zap.New(tee, zap.AddStacktrace(traceLevel))
 
 	return &ZapLogger{
 		config:      config,
@@ -159,4 +144,42 @@ func (o *ZapLogger) Finalize() {
 	if o.innerLogger != nil {
 		o.innerLogger.Sync()
 	}
+}
+
+type sinkCore struct {
+	sink     LogSink
+	minLevel zapcore.Level
+}
+
+func (c *sinkCore) Enabled(lvl zapcore.Level) bool {
+	return lvl >= c.minLevel
+}
+
+func (c *sinkCore) With(fields []zapcore.Field) zapcore.Core {
+	return c
+}
+
+func (c *sinkCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if c.Enabled(entry.Level) {
+		return ce.AddCore(entry, c)
+	}
+	return ce
+}
+
+func (c *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	// Convert zap fields to interface{} slice
+	args := make([]interface{}, 0, len(fields)+1)
+	args = append(args, entry.Message)
+
+	for _, field := range fields {
+		args = append(args, field)
+	}
+
+	// Write to sink
+	c.sink.WriteLog(entry.Level.String(), args...)
+	return nil
+}
+
+func (c *sinkCore) Sync() error {
+	return nil
 }
