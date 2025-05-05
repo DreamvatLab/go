@@ -1,5 +1,9 @@
 package xlog
 
+import (
+	"time"
+)
+
 // Global logger instance
 var (
 	_logger ILogger = newZapLogger(&LogConfig{})
@@ -61,7 +65,19 @@ type FileLogConfig struct {
 }
 
 type LogSink interface {
-	WriteLog(level string, v ...interface{})
+	// WriteLog writes a log entry with all fields and optional format arguments
+	WriteLog(entry *LogEntry)
+}
+
+// LogEntry represents a complete log entry with all fields
+type LogEntry struct {
+	Level      int
+	Time       time.Time
+	LoggerName string
+	Message    string
+	Caller     string
+	Stack      string
+	// Fields     map[string]interface{}
 }
 
 // WriteLog writes a debug level log message

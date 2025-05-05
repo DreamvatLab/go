@@ -167,16 +167,38 @@ func (c *sinkCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore
 }
 
 func (c *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	// Convert zap fields to interface{} slice
-	args := make([]interface{}, 0, len(fields)+1)
-	args = append(args, entry.Message)
+	// Convert zap fields to map
+	// fieldMap := make(map[string]interface{})
+	// for _, field := range fields {
+	// 	switch field.Type {
+	// 	case zapcore.StringType:
+	// 		fieldMap[field.Key] = field.String
+	// 	case zapcore.Int64Type, zapcore.Int32Type, zapcore.Int16Type, zapcore.Int8Type:
+	// 		fieldMap[field.Key] = field.Integer
+	// 	case zapcore.Float64Type:
+	// 		fieldMap[field.Key] = field.Interface
+	// 	case zapcore.BoolType:
+	// 		fieldMap[field.Key] = field.Integer == 1
+	// 	case zapcore.TimeType:
+	// 		fieldMap[field.Key] = field.Interface.(time.Time)
+	// 	default:
+	// 		fieldMap[field.Key] = field.Interface
+	// 	}
+	// }
 
-	for _, field := range fields {
-		args = append(args, field)
+	// Create LogEntry
+	logEntry := &LogEntry{
+		Level:      int(entry.Level),
+		Time:       entry.Time,
+		LoggerName: entry.LoggerName,
+		Message:    entry.Message,
+		Caller:     entry.Caller.String(),
+		Stack:      entry.Stack,
+		// Fields:     fieldMap,
 	}
 
 	// Write to sink
-	c.sink.WriteLog(entry.Level.String(), args...)
+	c.sink.WriteLog(logEntry)
 	return nil
 }
 
