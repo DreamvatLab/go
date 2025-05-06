@@ -188,7 +188,7 @@ func (c *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 	// Create LogEntry
 	logEntry := &LogEntry{
-		Level:      int(entry.Level),
+		Level:      convertZapLevel(entry.Level),
 		Time:       entry.Time,
 		LoggerName: entry.LoggerName,
 		Message:    entry.Message,
@@ -200,6 +200,22 @@ func (c *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// Write to sink
 	c.sink.WriteLog(logEntry)
 	return nil
+}
+
+func convertZapLevel(level zapcore.Level) int {
+	switch level {
+	case zapcore.DebugLevel:
+		return 1
+	case zapcore.InfoLevel:
+		return 2
+	case zapcore.WarnLevel:
+		return 3
+	case zapcore.ErrorLevel:
+		return 4
+	case zapcore.FatalLevel:
+		return 5
+	}
+	return 2 // Info
 }
 
 func (c *sinkCore) Sync() error {
