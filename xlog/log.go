@@ -4,13 +4,35 @@ import (
 	"time"
 )
 
+// 日志级别枚举
+const (
+	LogLevelAll   = "all"
+	LogLevelDebug = "debug"
+	LogLevelInfo  = "info"
+	LogLevelWarn  = "warn"
+	LogLevelError = "error"
+	LogLevelFatal = "fatal"
+)
+
+// 日志级别数值映射
+var LogLevelMap = map[string]int{
+	LogLevelAll:   0,
+	LogLevelDebug: 1,
+	LogLevelInfo:  2,
+	LogLevelWarn:  3,
+	LogLevelError: 4,
+	LogLevelFatal: 5,
+}
+
 // Global logger instance
 var (
-	_logger ILogger = newZapLogger(&LogConfig{})
+	// _logger ILogger = newZapLogger(&LogConfig{})
+	_logger ILogger = newGologLogger(&LogConfig{})
 )
 
 func Init(logConfig *LogConfig, sinks ...LogSink) {
-	_logger = newZapLogger(logConfig, sinks...)
+	// _logger = newZapLogger(logConfig, sinks...)
+	_logger = newGologLogger(logConfig, sinks...)
 }
 
 // ILogger defines the interface for logging operations
