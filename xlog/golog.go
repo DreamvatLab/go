@@ -65,10 +65,14 @@ func newGologLogger(config *LogConfig, sinks ...LogSink) ILogger {
 				Stack:      "",
 			}
 
-			xtask.ParallelRunSlice(len(sinks), sinks, func(sink LogSink) (interface{}, error) {
-				sink.WriteLog(logEntry)
-				return nil, nil
-			})
+			if len(sinks) == 1 {
+				sinks[0].WriteLog(logEntry)
+			} else {
+				xtask.ParallelRunSlice(len(sinks), sinks, func(sink LogSink) (interface{}, error) {
+					sink.WriteLog(logEntry)
+					return nil, nil
+				})
+			}
 
 			return false // 让golog正常输出
 		})
