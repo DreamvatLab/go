@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DreamvatLab/go/xtask"
 	"github.com/kataras/golog"
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 )
@@ -63,9 +64,12 @@ func newGologLogger(config *LogConfig, sinks ...LogSink) ILogger {
 				Caller:     "",
 				Stack:      "",
 			}
-			for _, sink := range sinks {
+
+			xtask.ParallelRunSlice(len(sinks), sinks, func(sink LogSink) (interface{}, error) {
 				sink.WriteLog(logEntry)
-			}
+				return nil, nil
+			})
+
 			return false // 让golog正常输出
 		})
 	}
