@@ -58,6 +58,9 @@ type ILogger interface {
 	// Fatalf logs a formatted message at fatal level and then calls os.Exit(1)
 	Fatalf(format string, args ...interface{})
 
+	// WriteEntry writes an entry with Flags / Payload to the sinks only (no console / file), subject to LogConfig.Level
+	WriteEntry(entry *LogEntry)
+
 	// Finalize performs any necessary cleanup operations for the logger
 	Finalize()
 }
@@ -99,7 +102,22 @@ type LogEntry struct {
 	Message    string
 	Caller     string
 	Stack      string
+	// Flags 是日志行上的标记位(业务自定,日志服务原样存;0 = 无标记)
+	Flags int64
+	// Payload 是日志行附带的结构化数据(通常是 JSON,日志服务原样存;空 = 无)
+	Payload string
 	// Fields     map[string]interface{}
+}
+
+// WriteEntry 写一条带 Flags / Payload 的日志:只送各 sink(不打控制台 / 文件),
+// 与 Debug / Info 等同一个 LogConfig.Level 门槛(entry.Level 取 LogLevelMap 的数值);Time 为零则取当前时刻。
+// 给「需要在日志行上打标记、带数据」的场景用(如通知记录);普通日志仍用 Debug / Info / …。
+func WriteEntry(entry *LogEntry) {
+	if _logger == nil {
+		panic("logger is not initialized")
+	}
+
+	_logger.WriteEntry(entry)
 }
 
 // WriteLog writes a debug level log message

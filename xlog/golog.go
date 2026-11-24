@@ -257,6 +257,23 @@ func (o *GologLogger) Fatalf(format string, args ...interface{}) {
 	o.innerLogger.Fatalf(format, args...)
 }
 
+func (o *GologLogger) WriteEntry(entry *LogEntry) {
+	// 门槛与 golog 一致:没配 Level 时 golog 缺省 info
+	threshold := LogLevelMap[LogLevelInfo]
+	if o.config.Level != "" {
+		threshold = LogLevelMap[o.config.Level]
+	}
+	if entry.Level < threshold {
+		return
+	}
+	if entry.Time.IsZero() {
+		entry.Time = time.Now()
+	}
+	for _, sink := range o.sinks {
+		sink.WriteLog(entry)
+	}
+}
+
 func (o *GologLogger) Finalize() {
 	// golog 不需要特殊的清理操作
 }
